@@ -1,0 +1,367 @@
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ST Chat</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#e5ddd5}
+button,input{font:inherit}
+button{cursor:pointer;border:0}
+#authPage{max-width:400px;margin:35px auto;background:white;padding:22px;border-radius:15px;text-align:center}
+h1{color:#075e54}
+.field{width:100%;padding:13px;margin:7px 0;border:1px solid #ccc;border-radius:8px}
+.action{width:100%;padding:13px;margin:6px 0;border-radius:8px;background:#075e54;color:white}
+#status{font-size:14px;overflow-wrap:anywhere}
+#chatPage{display:none;max-width:600px;margin:auto;height:100dvh;background:#efe7dd;flex-direction:column}
+header{background:#075e54;color:white;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+header h2{margin:0;font-size:20px}
+#logoutBtn{background:white;color:#075e54;padding:9px;border-radius:7px}
+#account,#friendBox{padding:10px;background:#fff;font-size:13px}
+#uid{overflow-wrap:anywhere;user-select:text}
+.smallBtn{background:#075e54;color:white;padding:8px;border-radius:7px}
+#friendForm{display:flex;gap:7px;margin-top:8px}
+#friendUid{flex:1;min-width:0;padding:11px;border:1px solid #ccc;border-radius:8px}
+#openBtn{background:#075e54;color:white;padding:10px;border-radius:8px}
+#notice{padding:8px;text-align:center;font-size:13px;overflow-wrap:anywhere}
+#contact{padding:6px 12px;color:#075e54;font-weight:bold}
+#messages{flex:1;overflow-y:auto;padding:12px}
+.msg{background:white;border-radius:10px;padding:9px 12px;margin:8px 0;max-width:85%;overflow-wrap:anywhere}
+.msg.mine{background:#d9fdd3;margin-left:auto}
+.sender{font-size:12px;color:#075e54;font-weight:bold;margin-bottom:5px}
+.time{font-size:10px;color:#666;text-align:right;margin-top:5px}
+#composer{display:flex;gap:7px;padding:10px;background:#f5f5f5}
+#chatInput{flex:1;min-width:0;padding:12px;border:1px solid #ccc;border-radius:22px}
+#sendBtn{background:#075e54;color:white;padding:0 17px;border-radius:22px}
+.empty{text-align:center;color:#555;padding:20px}
+</style>
+</head>
+<body>
+
+<section id="authPage">
+<h1>ST Chat 💚</h1>
+<p>বন্ধুদের সঙ্গে ব্যক্তিগত চ্যাট</p>
+<input class="field" id="name" placeholder="তোমার নাম">
+<input class="field" id="email" type="email" placeholder="ইমেইল">
+<input class="field" id="password" type="password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)">
+<button class="action" id="registerBtn">নতুন অ্যাকাউন্ট তৈরি</button>
+<button class="action" id="loginBtn">লগইন</button>
+<p id="status">স্বাগতম ST Chat-এ!</p>
+</section>
+
+<section id="chatPage">
+<header>
+<div>
+<h2>ST Chat 💚</h2>
+<small id="userLabel"></small>
+</div>
+<button id="logoutBtn">Logout</button>
+</header>
+
+<div id="account">
+<b>তোমার UID — বন্ধুকে দাও:</b>
+<p id="uid"></p>
+<button class="smallBtn" id="copyUidBtn">UID কপি করো</button>
+</div>
+
+<div id="friendBox">
+<b>বন্ধুর UID দিয়ে ব্যক্তিগত চ্যাট শুরু করো</b>
+<form id="friendForm">
+<input id="friendUid" placeholder="বন্ধুর সম্পূর্ণ UID" required>
+<button id="openBtn" type="submit">চ্যাট খোলো</button>
+</form>
+</div>
+
+<div id="notice">বন্ধুর UID লিখে চ্যাট শুরু করো।</div>
+<div id="contact">কোনো চ্যাট খোলা নেই</div>
+<div id="messages"><div class="empty">প্রথমে বন্ধুর UID দাও।</div></div>
+
+<form id="composer">
+<input id="chatInput" placeholder="মেসেজ লেখো..." maxlength="1000" required disabled>
+<button id="sendBtn" type="submit" disabled>Send</button>
+</form>
+</section>
+
+<script type="module">
+import {initializeApp}
+from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+
+import {
+ getAuth,createUserWithEmailAndPassword,
+ signInWithEmailAndPassword,onAuthStateChanged,
+ updateProfile,signOut
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
+
+import {
+ getDatabase,ref,get,set,push,onValue
+} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+
+const firebaseConfig={
+ apiKey:"AIzaSyCt9Oes-l-xmuLjLtK1YUNM-ypd4EqAhrw",
+ authDomain:"stchat-8f3a7.firebaseapp.com",
+ databaseURL:"https://stchat-8f3a7-default-rtdb.asia-southeast1.firebasedatabase.app",
+ projectId:"stchat-8f3a7",
+ storageBucket:"stchat-8f3a7.firebasestorage.app",
+ messagingSenderId:"886912867481",
+ appId:"1:886912867481:web:448880ec4c64c35670ec08",
+ measurementId:"G-ZJSKRL4R9P"
+};
+
+const $=id=>document.getElementById(id);
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);
+const db=getDatabase(app);
+
+let stopMessages=null;
+let activeChatId=null;
+let currentFriendUid=null;
+let friendName="বন্ধু";
+let busy=false;
+
+function notice(text){
+ $("notice").textContent=text;
+}
+
+function showError(error){
+ const errors={
+ "auth/email-already-in-use":"এই ইমেইলে অ্যাকাউন্ট আছে। লগইন করো।",
+ "auth/invalid-email":"সঠিক ইমেইল লেখো।",
+ "auth/weak-password":"পাসওয়ার্ড অন্তত ৬ অক্ষরের দাও।",
+ "auth/invalid-credential":"ইমেইল বা পাসওয়ার্ড ভুল।",
+ "auth/operation-not-allowed":"Firebase Authentication-এ Email/Password চালু করো।",
+ "auth/network-request-failed":"ইন্টারনেট পরীক্ষা করো।",
+ "PERMISSION_DENIED":"Database Rules অনুমতি দিচ্ছে না।",
+ "permission-denied":"Database Rules অনুমতি দিচ্ছে না।"
+ };
+ return errors[error.code]||error.message||"আবার চেষ্টা করো।";
+}
+
+function stopChat(){
+ if(stopMessages)stopMessages();
+ stopMessages=null;
+ activeChatId=null;
+ currentFriendUid=null;
+ $("chatInput").disabled=true;
+ $("sendBtn").disabled=true;
+ $("contact").textContent="কোনো চ্যাট খোলা নেই";
+ $("messages").replaceChildren();
+ const e=document.createElement("div");
+ e.className="empty";
+ e.textContent="বন্ধুর UID দিয়ে ব্যক্তিগত চ্যাট শুরু করো।";
+ $("messages").appendChild(e);
+}
+
+async function authAction(action){
+ if(busy)return;
+ busy=true;
+ $("registerBtn").disabled=true;
+ $("loginBtn").disabled=true;
+ try{
+  const email=$("email").value.trim();
+  const password=$("password").value;
+  const name=$("name").value.trim();
+
+  if(!email||!password)throw new Error("ইমেইল ও পাসওয়ার্ড লিখো।");
+
+  if(action==="register"){
+   if(!name)throw new Error("তোমার নাম লেখো।");
+   const result=await createUserWithEmailAndPassword(auth,email,password);
+   await updateProfile(result.user,{displayName:name});
+   await set(ref(db,"profiles/"+result.user.uid),{name:name});
+  }else{
+   await signInWithEmailAndPassword(auth,email,password);
+  }
+ }catch(e){
+  $("status").textContent=showError(e);
+ }finally{
+  busy=false;
+  $("registerBtn").disabled=false;
+  $("loginBtn").disabled=false;
+ }
+}
+
+$("registerBtn").addEventListener("click",()=>authAction("register"));
+$("loginBtn").addEventListener("click",()=>authAction("login"));
+
+onAuthStateChanged(auth,async user=>{
+ stopChat();
+
+ if(!user){
+  $("chatPage").style.display="none";
+  $("authPage").style.display="block";
+  return;
+ }
+
+ $("authPage").style.display="none";
+ $("chatPage").style.display="flex";
+ $("userLabel").textContent=user.displayName||"ST Chat ব্যবহারকারী";
+ $("uid").textContent=user.uid;
+ notice("অ্যাকাউন্ট প্রস্তুত হচ্ছে...");
+
+ try{
+  const profileRef=ref(db,"profiles/"+user.uid);
+  const profile=await get(profileRef);
+  if(!profile.exists()){
+   await set(profileRef,{name:user.displayName||"ST Chat ব্যবহারকারী"});
+  }
+  notice("বন্ধুর UID দিয়ে ব্যক্তিগত চ্যাট শুরু করো।");
+ }catch(e){
+  notice("প্রোফাইল সমস্যা: "+showError(e));
+ }
+});
+
+$("copyUidBtn").addEventListener("click",async()=>{
+ const uid=auth.currentUser?.uid;
+ if(!uid)return;
+ try{
+  await navigator.clipboard.writeText(uid);
+  notice("তোমার UID কপি হয়েছে।");
+ }catch(e){
+  notice("UID লেখাটি চেপে ধরে কপি করো।");
+ }
+});
+
+$("friendForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const user=auth.currentUser;
+ if(!user)return;
+
+ const friendUid=$("friendUid").value.trim();
+ if(!friendUid)return;
+ if(friendUid===user.uid){
+  notice("নিজের UID নয়, বন্ধুর UID দাও।");
+  return;
+ }
+
+ $("openBtn").disabled=true;
+ notice("বন্ধুকে খোঁজা হচ্ছে...");
+
+ try{
+  const profileSnap=await get(ref(db,"profiles/"+friendUid));
+  if(!profileSnap.exists()){
+   notice("এই UID-তে প্রোফাইল পাওয়া যায়নি। বন্ধুর UID পরীক্ষা করো।");
+   return;
+  }
+
+  const profile=profileSnap.val();
+  friendName=profile.name||"বন্ধু";
+  currentFriendUid=friendUid;
+
+  const chatId=[user.uid,friendUid].sort().join("_");
+  const chatRef=ref(db,"privateChats/"+chatId);
+  const existing=await get(chatRef);
+
+  if(!existing.exists()){
+   try{
+    await set(chatRef,{
+     members:{
+      [user.uid]:true,
+      [friendUid]:true
+     },
+     messages:{}
+    });
+   }catch(createError){
+    const check=await get(chatRef);
+    if(!check.exists())throw createError;
+   }
+  }
+
+  activeChatId=chatId;
+  if(stopMessages)stopMessages();
+
+  $("contact").textContent="ব্যক্তিগত চ্যাট: "+friendName;
+  $("chatInput").disabled=false;
+  $("sendBtn").disabled=false;
+  $("messages").replaceChildren();
+  notice("ব্যক্তিগত চ্যাট খোলা হয়েছে।");
+
+  stopMessages=onValue(
+   ref(db,"privateChats/"+chatId+"/messages"),
+   snapshot=>{
+    if(activeChatId!==chatId)return;
+    const list=$("messages");
+    list.replaceChildren();
+
+    if(!snapshot.exists()){
+     const empty=document.createElement("div");
+     empty.className="empty";
+     empty.textContent="এখনো কোনো মেসেজ নেই। প্রথম মেসেজ পাঠাও!";
+     list.appendChild(empty);
+     return;
+    }
+
+    const rows=[];
+    snapshot.forEach(child=>{
+     rows.push(child.val());
+    });
+    rows.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+
+    for(const data of rows){
+     const item=document.createElement("div");
+     item.className="msg"+(data.uid===user.uid?" mine":"");
+
+     const sender=document.createElement("div");
+     sender.className="sender";
+     sender.textContent=data.uid===user.uid?"তুমি":friendName;
+
+     const body=document.createElement("div");
+     body.textContent=data.text||"";
+
+     const time=document.createElement("div");
+     time.className="time";
+     time.textContent=data.createdAt
+      ?new Date(data.createdAt).toLocaleString("bn-BD")
+      :"";
+
+     item.append(sender,body,time);
+     list.appendChild(item);
+    }
+    list.scrollTop=list.scrollHeight;
+   },
+   error=>notice("মেসেজ পড়তে সমস্যা: "+showError(error))
+  );
+
+ }catch(e){
+  notice("চ্যাট খোলা যায়নি: "+showError(e));
+ }finally{
+  $("openBtn").disabled=false;
+ }
+});
+
+$("composer").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const user=auth.currentUser;
+ const text=$("chatInput").value.trim();
+ const chatId=activeChatId;
+
+ if(!user||!text||!chatId)return;
+
+ $("sendBtn").disabled=true;
+ try{
+  const messageRef=push(ref(db,"privateChats/"+chatId+"/messages"));
+  await set(messageRef,{
+   uid:user.uid,
+   text:text,
+   createdAt:Date.now()
+  });
+  $("chatInput").value="";
+  notice("মেসেজ পাঠানো হয়েছে।");
+ }catch(e){
+  notice("মেসেজ পাঠানো যায়নি: "+showError(e));
+ }finally{
+  $("sendBtn").disabled=false;
+ }
+});
+
+$("logoutBtn").addEventListener("click",async()=>{
+ try{
+  await signOut(auth);
+ }catch(e){
+  notice(showError(e));
+ }
+});
+</script>
+</body>
+</html>
